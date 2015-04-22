@@ -1,0 +1,147 @@
+#!/bin/bash
+### Set default parameters
+action=$1
+domain=$2
+rootdir=$3
+owner=$(who am i | awk '{print $1}')
+email='webmaster@localhost'
+sitesEnable='/etc/apache2/sites-enabled/'
+sitesAvailable='/etc/apache2/sites-available/'
+userDir='/var/www/'
+sitesAvailabledomain=$sitesAvailable$domain.conf
+
+### don't modify from here unless you know what you are doing ####
+ 
+if [ "$(whoami)" != 'root' ]; then
+	echo "Você não tem permissão para executar $0 como um usuário não-root. Use sudo"
+		exit 1;
+fi
+ 
+if [ "$action" != 'create' ] && [ "$action" != 'delete' ] 
+	then
+		echo "Você precisa especificar uma ação (create ou delete) -- apenas caixa-baixa"
+		exit 1;
+fi
+ 
+while [ "$domain" == ""  ]
+do
+	echo -e "Por favor, informe um dominio. (exemplo.dev)"
+	read  domain
+done
+ 
+if [ "$rootdir" == "" ]; then
+	rootdir=${domain}
+fi
+ 
+if [ "$action" == 'create' ] 
+	then
+		### check if domain already exists
+		if [ -e $sitesAvailabledomain ]; then
+			echo -e 'Este dominio já existe.\nPor favor, tente novamente.'
+			exit;
+		fi
+ 
+		### check if directory exists or not
+		if ! [ -d $userDir$rootdir ]; then
+			### create the directory
+			mkdir $userDir$rootdir
+			### give permission to root dir
+			chmod 755 $userDir$rootdir
+			### write test file in the new domain dir
+			if ! echo "<?php echo phpinfo(); ?>" > $userDir$rootdir/index.php
+			then
+				echo "ERROR: Não é possível escrever no arquivo "$userDir"/"$rootdir"/index.php. Por favor, cheque as permissões."
+				exit;
+			else
+				echo "Adicionado "$userDir$rootdir"/index.php."
+			fi
+		fi
+ 
+		### create virtual host rules file
+		if ! echo "
+		<VirtualHost *:80>
+			ServerName $domain
+			DocumentRoot \"$userDir$rootdir\"
+			<Directory \"$userDir$rootdir\">
+				Options Indexes FollowSymLinks MultiViews
+				AllowOverride All
+				Require all granted
+			</Directory>
+			ErrorLog \"/var/log/apache2/${domain}_error.log\"
+			ServerSignature Off
+			CustomLog \"/var/log/apache2/${domain}_access.log\" combined
+			ServerAlias www.$domain
+			SetEnv APP_ENV dev
+			ProxyPassMatch ^/(.*\.php(/.*)?)$ fcgi://127.0.0.1:9000$userDir$rootdir/\$1
+		</VirtualHost>" > $sitesAvailabledomain
+		then
+			echo -e 'Aconteceu um ERRO ao criar arquivo $domain'
+			exit;
+		else
+			echo -e '\nNovo Virtual Host criado!\n'
+		fi
+ 
+		### Add domain in /etc/hosts
+		if ! echo "127.0.0.1	$domain" >> /etc/hosts
+		then
+			echo "ERROR: Sem permissão para escrever em /etc/hosts"
+			exit;
+		else
+			echo -e "Host adicionado no arquivo /etc/hosts \n"
+		fi
+ 
+		if [ "$owner" == ""  ]; then
+			chown -R $(whoami):$(whoami) $userDir$rootdir
+		else
+			chown -R $owner:$owner $userDir$rootdir
+		fi
+
+		### enable website
+		a2ensite $domain
+ 
+		### restart Apache
+		/etc/init.d/apache2 reload
+ 
+		### show the finished message
+		echo -e "Pronto! \nVocê agora tem um novo Virtual Host \nSeu novo host é: http://"$domain" \nLocalizado em "$userDir$rootdir
+		exit;
+	else
+		### check whether domain already exists
+		if ! [ -e $sitesAvailabledomain ]; then
+			echo -e 'Este dominio não existe.\nPor favor, tente novamente.'
+			exit;
+		else
+			### Delete domain in /etc/hosts
+			newhost=${domain//./\\.}
+			sed -i "/$newhost/d" /etc/hosts
+
+			### disable website
+			a2dissite $domain
+	 
+			### restart Apache
+			/etc/init.d/apache2 reload
+
+			### Delete virtual host rules files
+			rm $sitesAvailabledomain
+		fi
+ 
+		### check if directory exists or not
+		if [ -d $userDir$rootdir ]; then
+			echo -e 'Apagar diretório do host? (s/n)'
+			read deldir
+
+			if [ "$deldir" == 's' -o "$deldir" == 'S' ]; then
+				### Delete the directory
+				rm -rf $userDir$rootdir
+				echo -e 'Directório apagado!'
+			else
+				echo -e 'Diretório do host mantido.'
+			fi
+		else
+			echo -e 'Diretório do host não encontrado. Ignorado.'
+		fi
+ 
+		### show the finished message
+		echo -e "Pronto!\nVocê removeu o Virtual Host "$domain
+		exit 0;
+fi
