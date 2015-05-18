@@ -25,5 +25,5 @@ sudo mv /caminho/do/script.sh /usr/bin/addvhost
 ## Finalizando
 Basta digitar no terminal
 ```
-addvhost
+sudo addvhost
 ```
