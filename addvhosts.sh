@@ -23,10 +23,10 @@ echo "
         Allow from all
     </Directory>
 </VirtualHost>
-" > /etc/apache2/sites-available/$server
+" > /etc/apache2/sites-available/$server.conf
  
 echo "Ativando VHOST $server"
-ln -s /etc/apache2/sites-available/$server /etc/apache2/sites-enabled/$server
+ln -s /etc/apache2/sites-available/$server.conf /etc/apache2/sites-enabled/$server.conf
  
 echo "Atualizando arquivo hosts"
 echo "127.0.1.1 $server www.$server" >> /etc/hosts
